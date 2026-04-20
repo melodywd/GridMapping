@@ -192,12 +192,53 @@ for t in range(1, len(time_steps)):
 
 
 # =========================
-# 7. 输出一些检查值
+# 7. 评估指标
 # =========================
+def evaluate_map(pred_map, true_map):
+    """计算占用地图的评估指标"""
+    pred_binary = pred_map.flatten()
+    true_binary = true_map.flatten()
+
+    # 混淆矩阵元素
+    TP = np.sum((pred_binary == 1) & (true_binary == 1))
+    TN = np.sum((pred_binary == 0) & (true_binary == 0))
+    FP = np.sum((pred_binary == 1) & (true_binary == 0))
+    FN = np.sum((pred_binary == 0) & (true_binary == 1))
+
+    # 计算指标
+    accuracy = (TP + TN) / (TP + TN + FP + FN) if (TP + TN + FP + FN) > 0 else 0
+    precision = TP / (TP + FP) if (TP + FP) > 0 else 0
+    recall = TP / (TP + FN) if (TP + FN) > 0 else 0
+    iou = TP / (TP + FP + FN) if (TP + FP + FN) > 0 else 0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+
+    return {
+        'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'iou': iou,
+        'f1': f1,
+        'TP': TP, 'TN': TN, 'FP': FP, 'FN': FN
+    }
+
+
 final_count = count_maps[-1]
 final_occ = occupancy_maps[-1]
 
-print("最终计数地图部分值：")
+# 计算评估指标
+metrics = evaluate_map(final_occ, true_map)
+
+print("=" * 50)
+print("无贝叶斯栅格地图构建 - 评估结果")
+print("=" * 50)
+print(f"Accuracy:  {metrics['accuracy']:.4f}")
+print(f"Precision: {metrics['precision']:.4f}")
+print(f"Recall:    {metrics['recall']:.4f}")
+print(f"IoU:       {metrics['iou']:.4f}")
+print(f"F1-Score:  {metrics['f1']:.4f}")
+print(f"\n混淆矩阵: TP={metrics['TP']}, TN={metrics['TN']}, FP={metrics['FP']}, FN={metrics['FN']}")
+
+print("\n最终计数地图部分值：")
 print(final_count[40, 10])
 print(final_count[30, 40])
 print(final_count[35, 40])
@@ -273,9 +314,21 @@ print("正在保存动画...")
 true_anim.save(f'{OUTPUT_DIR}/true_map_animation.mp4', writer='ffmpeg', fps=30)
 count_anim.save(f'{OUTPUT_DIR}/count_map_animation.mp4', writer='ffmpeg', fps=30)
 occ_anim.save(f'{OUTPUT_DIR}/occupancy_map_animation.mp4', writer='ffmpeg', fps=30)
-print("动画已保存为：")
-print(f"{OUTPUT_DIR}/true_map_animation.mp4")
-print(f"{OUTPUT_DIR}/count_map_animation.mp4")
-print(f"{OUTPUT_DIR}/occupancy_map_animation.mp4")
+print("动画已保存。")
+
+# 保存最终对比图
+fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+axes[0].imshow(1 - true_map, cmap='gray', origin='lower', vmin=0, vmax=1)
+axes[0].set_title('真实地图')
+axes[1].imshow(np.log1p(final_count), cmap='hot', origin='lower')
+axes[1].set_title('计数热图 (log)')
+axes[2].imshow(1 - final_occ, cmap='gray', origin='lower', vmin=0, vmax=1)
+axes[2].set_title(f'二值占用地图 (IoU={metrics["iou"]:.3f})')
+for ax in axes:
+    ax.plot(x[1], x[0], 'bx-', markersize=2)
+fig.suptitle('无贝叶斯栅格地图构建结果')
+fig.tight_layout()
+fig.savefig(f'{OUTPUT_DIR}/comparison_no_bayes.png', dpi=150)
+print(f"对比图已保存: {OUTPUT_DIR}/comparison_no_bayes.png")
 
 plt.show()
