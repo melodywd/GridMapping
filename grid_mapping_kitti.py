@@ -156,8 +156,8 @@ print(f"障碍物占比: {obstacle_ratio*100:.1f}%")
 # 4. 核心函数
 # =========================
 # 噪声参数
-NOISE_DIST_STD = 1.5     # 距离测量噪声标准差（格）
-FALSE_POS_RATE = 0.02    # 假正例率（空气中检测到障碍）
+NOISE_DIST_STD = 2.0     # 距离测量噪声标准差（格）
+FALSE_POS_RATE = 0.04    # 假正例率（空气中检测到障碍）
 FALSE_NEG_RATE = 0.05    # 假负例率（漏检真实障碍）
 np.random.seed(123)
 
@@ -197,16 +197,22 @@ def get_ranges(true_map, X, meas_phi, rmax, add_noise=True):
 
 
 def inverse_scanner(num_rows, num_cols, x, y, theta, meas_phi, meas_r, rmax, alpha, beta):
-    """逆扫描测量模型"""
-    m = np.zeros((num_rows, num_cols))
-    for i in range(num_rows):
-        for j in range(num_cols):
+    """逆扫描测量模型（局部更新：只计算传感器范围内的格子）"""
+    m = np.full((num_rows, num_cols), 0.5)
+    i_min = max(0, int(x - rmax - 1))
+    i_max = min(num_rows, int(x + rmax + 2))
+    j_min = max(0, int(y - rmax - 1))
+    j_max = min(num_cols, int(y + rmax + 2))
+    for i in range(i_min, i_max):
+        for j in range(j_min, j_max):
             r = math.sqrt((i - x)**2 + (j - y)**2)
+            if r > rmax:
+                continue
             phi = (math.atan2(j - y, i - x) - theta + math.pi) % (2 * math.pi) - math.pi
             k = np.argmin(np.abs(np.subtract(phi, meas_phi)))
-            if (r > min(rmax, meas_r[k] + alpha / 2.0)) or (abs(phi - meas_phi[k]) > beta / 2.0):
-                m[i, j] = 0.5
-            elif (meas_r[k] < rmax) and (abs(r - meas_r[k]) < alpha / 2.0):
+            if abs(phi - meas_phi[k]) > beta / 2.0:
+                continue
+            if (meas_r[k] < rmax) and (abs(r - meas_r[k]) < alpha / 2.0):
                 m[i, j] = 0.7
             elif r < meas_r[k]:
                 m[i, j] = 0.3
@@ -238,13 +244,13 @@ def evaluate_map(pred_map, true_map, threshold=0.5):
 # =========================
 meas_phi = np.arange(-math.pi, math.pi, 0.08)  # 360度扫描（模拟Velodyne投影到2D）
 rmax = 20  # 量程20格 = 40米
-alpha = 1.0  # 障碍物宽度
+alpha = 1.5  # 障碍物宽度（增大以提高覆盖）
 beta = 0.08  # 光束角宽
-threshold = 1  # 无贝叶斯计数阈值
-BAYES_THRESHOLD = 0.6  # 贝叶斯占用判定阈值
+threshold = 3  # 无贝叶斯计数阈值
+BAYES_THRESHOLD = 0.55  # 贝叶斯占用判定阈值
 
-# 采样帧数（每隔N帧取一帧，减少计算量）
-FRAME_SKIP = 3
+# 采样帧数（降低采样间隔以增加观测次数）
+FRAME_SKIP = 2
 frame_indices = list(range(0, len(poses_grid_double), FRAME_SKIP))
 T_MAX = len(frame_indices)
 print(f"采样帧数: {T_MAX} (每{FRAME_SKIP}帧采样)")
